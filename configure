@@ -3474,7 +3474,7 @@ fi
 $as_echo "$ac_cv_lib_crypt_crypt" >&6; }
 if test "x$ac_cv_lib_crypt_crypt" = x""yes; then :
 
-    LIBS="-lcrypt $LIBS -lcrypto"
+    LIBS="-lcrypt $LIBS"
 
 $as_echo "#define HAVE_CRYPT 1" >>confdefs.h
 

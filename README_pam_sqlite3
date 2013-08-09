@@ -1,0 +1,83 @@
+PAM module for SQLite3
+======================
+
+
+Introduction
+============
+
+This is an enhancement done on the original project in order to 
+provide PAM support for SQLite3.
+    - https://github.com/Sectoid/libpam-sqlite
+    - git@github.com:Sectoid/libpam-sqlite.git
+
+
+Download
+========
+
+    $ git clone git@github.com:sangeeths/libpam-sqlite.git
+
+
+Compilation & Installation
+==========================
+
+NOTE: If you come across issues on libtool, then add the 
+      following softlinks from the libpam-sqlite directory. 
+      In my machine I had the following softlinks. 
+
+config.guess -> /usr/share/libtool/config/config.guess
+config.sub -> /usr/share/libtool/config/config.sub
+
+    $ ./configure
+    $ make
+    $ make install
+
+Compilation has been tested on 
+    -> Fedora Core 18 running 3.6.10-4 on x86_64
+
+You will need to have SQLite and SQLite3 library and header 
+files for this module to compile.
+
+
+Configuration
+=============
+
+For the service you wish the module to be used, you need
+to edit the /etc/pam.d/<service> file or /etc/pam.conf, and 
+add the relevant lines.
+
+For example:
+
+auth        required    /lib/security/pam_sqlite3.so 
+account     required    /lib/security/pam_sqlite3.so
+password    required    /lib/security/pam_sqlite3.so
+
+Configure the database, and table the module should use with
+the configuration file /etc/pam_sqlite.conf. An example of
+this file:
+
+database = /etc/sysdb
+table = account
+user_column = user_name
+pwd_column = user_password
+expired_column = acc_expired
+newtok_column = acc_new_pwreq
+debug
+
+/etc/sysdb should be a SQLite3 database file.
+
+expired_column tells PAM if the user account has expired. Set it to '1'
+or 'y' if it has.
+
+newtok_column tells PAM if the user needs a new password. Set it to '1'
+or 'y' if it does.
+
+
+References
+==========
+Please go through the README of the original project for 
+detailed explanation on various configurable options, 
+format specifiers, etc. 
+    - https://github.com/Sectoid/libpam-sqlite/blob/master/README
+
+
+__END__
