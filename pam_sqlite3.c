@@ -30,7 +30,6 @@
 #if HAVE_CRYPT_H
 #include <crypt.h>
 #endif
-#include <openssl/md5.h>
 
 #define PAM_SM_AUTH
 #define PAM_SM_ACCOUNT
@@ -43,8 +42,7 @@
 #define PASSWORD_PROMPT_CONFIRM "Confirm new password: "
 #define CONF                    "/etc/pam_sqlite.conf"
 
-#define DBGLOG(x...)  printf(x);                                    \
-                      if(options->debug) {                          \
+#define DBGLOG(x...)  if(options->debug) {                          \
                           openlog("PAM_sqlite", LOG_PID, LOG_AUTH); \
                           syslog(LOG_DEBUG, ##x);                   \
                           closelog();                               \
@@ -53,7 +51,6 @@
                           openlog("PAM_sqlite", LOG_PID, LOG_AUTH); \
                           syslog(LOG_INFO, ##x);                    \
                           closelog();                               \
-                          printf(x);                                \
                       } while(0);
 
 typedef enum {
@@ -386,7 +383,6 @@ static char * crypt_make_salt(struct module_options *options)
         result[0] = '\0';
     }
 
-    printf("salt = %s \n", result);
     return result;
 }
 
@@ -507,8 +503,12 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
                != PAM_SUCCESS))
         goto cleanup;
 
-    if ((result = auth_verify_password(un, pwd, options)) == PAM_SUCCESS)
+    if ((result = auth_verify_password(un, pwd, options)) == PAM_SUCCESS) {
         SYSLOG("[%s] user %s authenticated.\n", pam_get_service(pamh), un);
+    } else {
+        SYSLOG("[%s] unable to authenticate user %s [%s]\n", 
+                pam_get_service(pamh), un, pam_strerror(NULL, result));
+    }
 
 cleanup:
     free_module_options(options);
@@ -567,6 +567,7 @@ PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh,
 
         retval = sqlite3_step(stmt);
         if (retval == SQLITE_ROW) {
+            SYSLOG("[%s] user %s account expired.\n", pam_get_service(pamh), un);
             result = PAM_ACCT_EXPIRED;
             goto cleanup_2;
         }
@@ -593,6 +594,8 @@ PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh,
 
         retval = sqlite3_step(stmt);
         if (retval == SQLITE_ROW) {
+            SYSLOG("[%s] user %s account requires new authentication token.\n", 
+                    pam_get_service(pamh), un);
             result = PAM_NEW_AUTHTOK_REQD;
             goto cleanup_2;
         }
@@ -672,7 +675,7 @@ PAM_EXTERN int pam_sm_chauthtok(pam_handle_t *pamh,
 
         retval = auth_verify_password(un, pwd, options);
         if (retval != PAM_SUCCESS) {
-            SYSLOG("(%s) user '%s' not authenticated.", pam_get_service(pamh), un);
+            SYSLOG("[%s] user '%s' not authenticated.", pam_get_service(pamh), un);
             result = retval;
             goto cleanup_1;
         }
