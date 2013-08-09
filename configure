@@ -594,6 +594,9 @@ ac_includes_default="\
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 SQLITE_LIB
+SQLITE_LIBS
+SQLITE3_LIB
+SQLITE3_LIBS
 SQLITE_INC
 EGREP
 GREP
@@ -3471,7 +3474,7 @@ fi
 $as_echo "$ac_cv_lib_crypt_crypt" >&6; }
 if test "x$ac_cv_lib_crypt_crypt" = x""yes; then :
 
-    LIBS="-lcrypt $LIBS -lcrypt"
+    LIBS="-lcrypt $LIBS -lcrypto"
 
 $as_echo "#define HAVE_CRYPT 1" >>confdefs.h
 
@@ -3763,12 +3766,72 @@ fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_sqlite_sqlite_open" >&5
 $as_echo "$ac_cv_lib_sqlite_sqlite_open" >&6; }
 if test "x$ac_cv_lib_sqlite_sqlite_open" = x""yes; then :
-  LIBS="$LIBS -lsqlite"
-     SQLITE_LIB=-L$SQLITE_DIR/lib
-
+    SQLITE_LIBS="-lsqlite"
+    SQLITE_LIB=-L$SQLITE_DIR/lib
 else
   as_fn_error "could not determine SQLite library location" "$LINENO" 5
 fi
+
+
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SQLite3 headers" >&5
+$as_echo_n "checking for SQLite3 headers... " >&6; }
+for d in /usr/local /usr ; do
+    test -f $d/include/sqlite3.h && {
+
+        SQLITE_INC="-I$d/include"
+        SQLITE_DIR="$d"
+        { $as_echo "$as_me:${as_lineno-$LINENO}: result: found in $d/include" >&5
+$as_echo "found in $d/include" >&6; }
+    }
+done
+
+old_LDFLAGS="$LDFLAGS"
+LDFLAGS="$LDFLAGS -L$SQLITE_DIR/lib"
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for sqlite3_open in -lsqlite3" >&5
+$as_echo_n "checking for sqlite3_open in -lsqlite3... " >&6; }
+if test "${ac_cv_lib_sqlite3_sqlite3_open+set}" = set; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lsqlite3 $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char sqlite3_open ();
+int
+main ()
+{
+return sqlite3_open ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_sqlite3_sqlite3_open=yes
+else
+  ac_cv_lib_sqlite3_sqlite3_open=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_sqlite3_sqlite3_open" >&5
+$as_echo "$ac_cv_lib_sqlite3_sqlite3_open" >&6; }
+if test "x$ac_cv_lib_sqlite3_sqlite3_open" = x""yes; then :
+    SQLITE3_LIBS="-lsqlite3"
+    SQLITE3_LIB=-L$SQLITE_DIR/lib
+
+else
+  as_fn_error "could not determine SQLite3 library location" "$LINENO" 5
+fi
+
 
 LDFLAGS="$old_LDFLAGS"
 

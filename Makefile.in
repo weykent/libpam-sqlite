@@ -1,25 +1,25 @@
 # $Id: Makefile.in,v 1.5 2003/06/22 22:59:45 ek Exp $
-LIBSRC=     pam_sqlite.c
-LIBOBJ=     pam_sqlite.o pam_get_pass.o pam_std_option.o pam_get_service.o
-LIBLIB=     pam_sqlite.so
+LIBSRC=     pam_sqlite.c pam_sqlite3.c
+LIBOBJ=     pam_sqlite.o  pam_get_pass.o pam_std_option.o pam_get_service.o
+LIBOBJ3=    pam_sqlite3.o pam_get_pass.o pam_std_option.o pam_get_service.o
 
 DISTDIR=    pam_sqlite-0.1
 ROOTDIR=	
 
-LINK=		@SQLITE_LIB@
-LDLIBS=		${LINK} @LIBS@
+LDLIBS=		@SQLITE_LIBS@ @LIBS@
+LDLIBS3=	@SQLITE3_LIBS@ @LIBS@
 INCLUDE=	@SQLITE_INC@
 CFLAGS=		@CFLAGS@ -fPIC -DPIC -Wall -D_GNU_SOURCE ${INCLUDE}
 
 
-all: ${LIBLIB}
+all: pam_sqlite.so pam_sqlite3.so
 
 DISTDIRS=	debian
 DISTFILES= acconfig.h README pam_get_pass.c pam_get_service.c pam_mod_misc.h \
-	pam_sqlite.c pam_std_option.c test.c debian/changelog debian/control \
-	debian/copyright debian/dirs debian/rules Makefile.in configure.in \
-	config.h.in install-sh config.sub config.guess install-module configure \
-	CREDITS
+	pam_sqlite.c pam_sqlite3.c pam_std_option.c test.c debian/changelog \
+	debian/control debian/copyright debian/dirs debian/rules Makefile.in \
+	configure.in config.h.in install-sh config.sub config.guess install-module \
+	configure CREDITS
 
 distfiles: ${DISTFILES}
 
@@ -36,8 +36,11 @@ ${DISTDIR}.tar.gz: distfiles
 
 dist: ${DISTDIR}.tar.gz
 
-${LIBLIB}: ${LIBOBJ}
+pam_sqlite.so: ${LIBOBJ}
 	${CC} ${CFLAGS} ${INCLUDE} -shared -o $@ ${LIBOBJ} ${LDLIBS} 
+
+pam_sqlite3.so: ${LIBOBJ3}
+	${CC} ${CFLAGS} ${INCLUDE} -shared -o $@ ${LIBOBJ3} ${LDLIBS3}
 
 test: test.c
 	${CC} ${CFLAGS} -o $@ test.c ${LDLIBS}
