@@ -422,7 +422,10 @@ static unsigned char * crypt_make_salt(struct module_options *options)
 static char * encrypt_password(struct module_options *options,
                                const char *pass)
 {
-    return strdup(crypt(pass, (char *)crypt_make_salt(options)));
+    char *salt = (char *)crypt_make_salt(options);
+    if (salt == NULL)
+        return NULL;
+    return strdup(crypt(pass, salt));
 }
 
 /* private: authenticate username and password against database */
