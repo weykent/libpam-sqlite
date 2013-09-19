@@ -13,10 +13,11 @@
 /* $Id: pam_sqlite.c,v 1.11 2003/07/17 13:47:07 wez Exp $ */
 
 #include "config.h"
-#include <stdio.h>
-#include <stdlib.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <string.h>
+#include <stdlib.h>
 #include <syslog.h>
 #include <ctype.h>
 #if HAVE_UNISTD_H
