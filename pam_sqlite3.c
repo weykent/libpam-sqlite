@@ -5,7 +5,7 @@
  * Extended SQL configuration support by Wez Furlong <wez@thebrainroom.com>
  *
  * Based in part on pam_pgsql.c by David D.W. Downey ("pgpkeys") <david-downey@codecastle.com>
- * 
+ *
  * Based in part on pam_unix.c of FreeBSD.
  *
  */
@@ -54,7 +54,7 @@
                       } while(0);
 
 typedef enum {
-    PW_CLEAR = 1,
+    PW_SHA512,
 #if HAVE_MD5_CRYPT
     PW_MD5,
 #endif
@@ -87,9 +87,9 @@ struct module_options {
 #define APPEND(str, len)    GROW(len); memcpy(buf + dest, str, len); dest += len
 #define APPENDS(str)    len = strlen(str); APPEND(str, len)
 
-static char * format_query(const char *template, 
+static char * format_query(const char *template,
                            struct module_options *options,
-                           const char *user, 
+                           const char *user,
                            const char *passwd)
 {
     char *buf = malloc(256);
@@ -167,12 +167,12 @@ static char * format_query(const char *template,
     return buf;
 }
 
-static void get_module_options_from_file(const char *filename, 
-                                         struct module_options *opts, 
+static void get_module_options_from_file(const char *filename,
+                                         struct module_options *opts,
                                          int warn);
 
 /* private: parse and set the specified string option */
-static void set_module_option(const char *option, 
+static void set_module_option(const char *option,
                               struct module_options *options)
 {
     char *buf, *eq;
@@ -213,7 +213,7 @@ static void set_module_option(const char *option,
     } else if(!strcmp(buf, "newtok_column")) {
         options->newtok_column = strdup(val);
     } else if(!strcmp(buf, "pw_type")) {
-        options->pw_type = PW_CLEAR;
+        options->pw_type = PW_SHA512;
         if(!strcmp(val, "crypt")) {
             options->pw_type = PW_CRYPT;
         }
@@ -240,8 +240,8 @@ static void set_module_option(const char *option,
 }
 
 /* private: read module options from a config file */
-static void get_module_options_from_file(const char *filename, 
-                                         struct module_options *opts, 
+static void get_module_options_from_file(const char *filename,
+                                         struct module_options *opts,
                                          int warn)
 {
     FILE *fp;
@@ -268,8 +268,8 @@ static void get_module_options_from_file(const char *filename,
 }
 
 /* private: read module options from file or commandline */
-static int get_module_options(int argc, 
-                              const char **argv, 
+static int get_module_options(int argc,
+                              const char **argv,
                               struct module_options **options)
 {
     int i, retval = 0;
@@ -277,7 +277,7 @@ static int get_module_options(int argc,
 
     opts = (struct module_options *)malloc(sizeof *opts);
     bzero(opts, sizeof(*opts));
-    opts->pw_type = PW_CLEAR;
+    opts->pw_type = PW_SHA512;
 
     get_module_options_from_file(CONF, opts, 0);
 
@@ -321,7 +321,7 @@ static void free_module_options(struct module_options *options)
 /* private: make sure required options are present (in cmdline or conf file) */
 static int options_valid(struct module_options *options)
 {
-    if(options->database == 0 || options->table == 0 || options->user_column == 0) 
+    if(options->database == 0 || options->table == 0 || options->user_column == 0)
     {
         SYSLOG("the database, table and user_column options are required.");
         return -1;
@@ -338,78 +338,94 @@ static sqlite3 * pam_sqlite_connect(struct module_options *options,
 
     res = sqlite3_open_v2(options->database, &sdb, flags, NULL);
     if (res != SQLITE_OK) {
-        SYSLOG("Error opening SQLite database [%s] [%s]\n", 
+        SYSLOG("Error opening SQLite database [%s] [%s]\n",
                 options->database, sqlite3_errmsg(sdb));
         return NULL;
     }
 
-    DBGLOG("Successfully opened SQLite3 database [%s]\n", 
+    DBGLOG("Successfully opened SQLite3 database [%s]\n",
             options->database);
     return sdb;
 }
 
 /* private: generate random salt character */
-static char * crypt_make_salt(struct module_options *options)
+static unsigned char * crypt_make_salt(struct module_options *options)
 {
-    int i;
-    time_t now;
-    static unsigned long x;
-    static char result[21];
-    static char salt_chars[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./";
+    int add_trailing_dollar = 0, i, r, urandom, needed;
+    static unsigned char buffer[21];
+    static unsigned char salt_chars[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./";
+    unsigned char pool, *insert_point = buffer, *ret = buffer;
 
-    time(&now);
-    x += now + getpid() + clock();
-    srandom(x);
+    if ((urandom = open("/dev/null", O_RDONLY)) == -1) {
+        DBGLOG("couldn't open /dev/urandom; errno %d (%s)\n", errno, strerror(errno));
+        ret = NULL;
+        goto cleanup;
+    }
 
     switch(options->pw_type) {
     case PW_CRYPT:
-        result[0] = salt_chars[random() % 64];
-        result[1] = salt_chars[random() % 64];
-        result[2] = '\0';
+        needed = 2;
+        break;
+    case PW_SHA512:
+        *insert_point++ = '$';
+        *insert_point++ = '6';
+        *insert_point++ = '$';
+        needed = 16;
+        add_trailing_dollar = 1;
         break;
 #if HAVE_MD5_CRYPT
     case PW_MD5:
-        result[0]='$';
-        result[1]='6';
-        result[2]='$';
-        for (i=3; i<19; i++) {
-            result[i] = salt_chars[random() % 64];
-        }
-        result[19] = '$';
-        result[20]='\0';
+        *insert_point++ = '$';
+        *insert_point++ = '1';
+        *insert_point++ = '$';
+        needed = 16;
+        add_trailing_dollar = 1;
         break;
 #endif
-    default:
-        result[0] = '\0';
     }
 
-    return result;
+    r = read(urandom, insert_point, needed);
+    if (r == -1) {
+        DBGLOG("error reading from /dev/urandom; errno %d (%s)\n", errno, strerror(errno));
+        ret = NULL;
+        goto cleanup;
+    } else if (r != needed) {
+        DBGLOG("short read from /dev/urandom\n");
+        ret = NULL;
+        goto cleanup;
+    }
+    for (i = 0; i < needed; ++i) {
+        insert_point[i] = salt_chars[insert_point[i] % 64];
+    }
+    insert_point += needed;
+    if (add_trailing_dollar) {
+        *insert_point++ = '$';
+    }
+    *insert_point++ = 0;
+
+  cleanup:
+    if (urandom != -1) {
+        while (close(urandom) == -1) {
+            if (errno != EINTR) {
+                DBGLOG("couldn't close /dev/urandom; errno %d (%s)\n", errno, strerror(errno));
+                ret = NULL;
+                break;
+            }
+        }
+    }
+    return ret;
 }
 
 /* private: encrypt password using the preferred encryption scheme */
-static char * encrypt_password(struct module_options *options, 
+static char * encrypt_password(struct module_options *options,
                                const char *pass)
 {
-    char *s = NULL;
-
-    switch(options->pw_type) {
-#if HAVE_MD5_CRYPT
-        case PW_MD5:
-#endif
-        case PW_CRYPT:
-            s = strdup(crypt(pass, crypt_make_salt(options)));
-            break;
-        case PW_CLEAR:
-        default:
-            s = strdup(pass);
-    }
-
-    return s;
+    return strdup(crypt(pass, (char *)crypt_make_salt(options)));
 }
 
 /* private: authenticate username and password against database */
-static int auth_verify_password(const char *un, 
-                                const char *pwd, 
+static int auth_verify_password(const char *un,
+                                const char *pwd,
                                 struct module_options *options)
 {
     sqlite3 *sdb;
@@ -420,7 +436,7 @@ static int auth_verify_password(const char *un,
     if(!(sdb = pam_sqlite_connect(options, SQLITE_OPEN_READONLY)))
         return PAM_AUTH_ERR;
 
-    query = format_query(options->sql_verify ? options->sql_verify : 
+    query = format_query(options->sql_verify ? options->sql_verify :
                          "SELECT %Op FROM %Ot WHERE %Ou='%U'",
                          options, un, pwd);
     DBGLOG("query: %s \n", query);
@@ -429,7 +445,7 @@ static int auth_verify_password(const char *un,
     retval = sqlite3_prepare_v2(sdb, query, -1, &stmt, NULL);
 
     if (retval != SQLITE_OK) {
-        DBGLOG("Error executing SQLite query [%s]", 
+        DBGLOG("Error executing SQLite query [%s]",
                 sqlite3_errmsg(sdb));
         result = PAM_AUTH_ERR;
         goto cleanup;
@@ -440,7 +456,7 @@ static int auth_verify_password(const char *un,
 
     /* if the select query results in no rows, then the user is not available */
     if (retval == SQLITE_DONE) {
-        DBGLOG("No record found for user [%s] [%s]", 
+        DBGLOG("No record found for user [%s] [%s]",
                 un, sqlite3_errmsg(sdb));
         result = PAM_USER_UNKNOWN;
         goto cleanup;
@@ -448,26 +464,23 @@ static int auth_verify_password(const char *un,
 
     /* if the select query does not yield a valid row, then fail */
     if (retval != SQLITE_ROW) {
-        DBGLOG("Unable to reterieve user record [%s] [%s]", 
+        DBGLOG("Unable to reterieve user record [%s] [%s]",
                 un, sqlite3_errmsg(sdb));
         result = PAM_AUTH_ERR;
         goto cleanup;
     }
-    
+
     /* get the encrypted password from the database */
     const char *stored_pwd = (char *)sqlite3_column_text(stmt, 0);
 
     result = PAM_AUTH_ERR;
     switch(options->pw_type) {
-        case PW_CLEAR:
-            if(strcmp(pwd, stored_pwd) == 0)
-                result = PAM_SUCCESS;
-            break;
+        case PW_SHA512:
 #if HAVE_MD5_CRYPT
-        case PW_MD5: 
+        case PW_MD5:
 #endif
         case PW_CRYPT:
-            if(strcmp(crypt(pwd, stored_pwd), stored_pwd) == 0) 
+            if(strcmp(crypt(pwd, stored_pwd), stored_pwd) == 0)
                 result = PAM_SUCCESS;
             break;
     }
@@ -488,7 +501,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
     struct module_options *options;
     const char *un, *pwd;
     int std_flags;
-    int result; 
+    int result;
 
     if ((result = pam_get_user(pamh, &un, NULL)) != PAM_SUCCESS)
         return result;
@@ -499,14 +512,14 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh,
         goto cleanup;
     }
 
-    if ((result = pam_get_pass(pamh, &pwd, PASSWORD_PROMPT, std_flags) 
+    if ((result = pam_get_pass(pamh, &pwd, PASSWORD_PROMPT, std_flags)
                != PAM_SUCCESS))
         goto cleanup;
 
     if ((result = auth_verify_password(un, pwd, options)) == PAM_SUCCESS) {
         SYSLOG("[%s] user %s authenticated.\n", pam_get_service(pamh), un);
     } else {
-        SYSLOG("[%s] unable to authenticate user %s [%s]\n", 
+        SYSLOG("[%s] unable to authenticate user %s [%s]\n",
                 pam_get_service(pamh), un, pam_strerror(NULL, result));
     }
 
@@ -594,7 +607,7 @@ PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh,
 
         retval = sqlite3_step(stmt);
         if (retval == SQLITE_ROW) {
-            SYSLOG("[%s] user %s account requires new authentication token.\n", 
+            SYSLOG("[%s] user %s account requires new authentication token.\n",
                     pam_get_service(pamh), un);
             result = PAM_NEW_AUTHTOK_REQD;
             goto cleanup_2;
@@ -649,7 +662,7 @@ PAM_EXTERN int pam_sm_chauthtok(pam_handle_t *pamh,
             result = PAM_AUTH_ERR;
             goto cleanup_1;
         }
-    
+
         if ((retval = auth_verify_password(un, pwd, options)) != PAM_SUCCESS) {
             DBGLOG("password verification failed for '%s'", un);
             result = retval;
@@ -657,7 +670,7 @@ PAM_EXTERN int pam_sm_chauthtok(pam_handle_t *pamh,
         }
 
         retval = pam_set_item(pamh, PAM_OLDAUTHTOK, (const void *)pwd);
-        if (retval != PAM_SUCCESS) 
+        if (retval != PAM_SUCCESS)
             SYSLOG("failed to set PAM_OLDAUTHTOK!");
         result = retval;
         goto cleanup_1;
@@ -681,7 +694,7 @@ PAM_EXTERN int pam_sm_chauthtok(pam_handle_t *pamh,
         }
 
         /* get and confirm the new passwords */
-        retval = pam_get_confirm_pass(pamh, &new_pwd, PASSWORD_PROMPT_NEW, 
+        retval = pam_get_confirm_pass(pamh, &new_pwd, PASSWORD_PROMPT_NEW,
                                       PASSWORD_PROMPT_CONFIRM, std_flags);
         if (retval != PAM_SUCCESS) {
             SYSLOG("could not retrieve new authentication tokens");
@@ -725,7 +738,7 @@ PAM_EXTERN int pam_sm_chauthtok(pam_handle_t *pamh,
     }
 
     result = PAM_SUCCESS;
-    SYSLOG("[%s] password for '%s' was changed.\n", 
+    SYSLOG("[%s] password for '%s' was changed.\n",
             pam_get_service(pamh), un);
 
 cleanup_3:
@@ -742,9 +755,9 @@ cleanup_1:
 }
 
 /* public: just succeed. */
-PAM_EXTERN int pam_sm_setcred(pam_handle_t *pamh, 
-                              int flags, 
-                              int argc, 
+PAM_EXTERN int pam_sm_setcred(pam_handle_t *pamh,
+                              int flags,
+                              int argc,
                               const char **argv)
 {
     return PAM_SUCCESS;
