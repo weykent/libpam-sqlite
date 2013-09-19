@@ -15,6 +15,7 @@
 #include "config.h"
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
@@ -355,7 +356,7 @@ static unsigned char * crypt_make_salt(struct module_options *options)
     int add_trailing_dollar = 0, i, r, urandom, needed;
     static unsigned char buffer[21];
     static unsigned char salt_chars[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./";
-    unsigned char pool, *insert_point = buffer, *ret = buffer;
+    unsigned char *insert_point = buffer, *ret = buffer;
 
     if ((urandom = open("/dev/null", O_RDONLY)) == -1) {
         DBGLOG("couldn't open /dev/urandom; errno %d (%s)\n", errno, strerror(errno));
