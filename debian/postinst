@@ -1,0 +1,29 @@
+#!/bin/sh
+#
+
+set -e
+
+cat >/usr/share/pam-configs/sqlite3 <<EOF
+Name: sqlite3 authentication
+Default: yes
+Priority: 257
+Auth-Type: Primary
+Auth:
+	[success=end default=ignore]	pam_sqlite3.so
+Auth-Initial:
+	[success=end default=ignore]	pam_sqlite3.so
+Account-Type: Primary
+Account:
+	[success=end default=ignore]	pam_sqlite3.so
+Account-Initial:
+	[success=end default=ignore]	pam_sqlite3.so
+Password-Type: Primary
+Password:
+	[success=end default=ignore]	pam_sqlite3.so
+Password-Initial:
+	[success=end default=ignore]	pam_sqlite3.so
+EOF
+
+pam-auth-update --package
+
+#DEBHELPER#
