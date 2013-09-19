@@ -353,12 +353,12 @@ static sqlite3 * pam_sqlite_connect(struct module_options *options,
 /* private: generate random salt character */
 static unsigned char * crypt_make_salt(struct module_options *options)
 {
-    int add_trailing_dollar = 0, i, r, urandom, needed;
+    int add_trailing_dollar = 0, i, r, n_read, urandom, needed;
     static unsigned char buffer[21];
     static unsigned char salt_chars[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./";
-    unsigned char *insert_point = buffer, *ret = buffer;
+    unsigned char *insert_point = buffer, *ret = buffer, *read_point;
 
-    if ((urandom = open("/dev/null", O_RDONLY)) == -1) {
+    if ((urandom = open("/dev/urandom", O_RDONLY)) == -1) {
         DBGLOG("couldn't open /dev/urandom; errno %d (%s)\n", errno, strerror(errno));
         ret = NULL;
         goto cleanup;
@@ -386,15 +386,20 @@ static unsigned char * crypt_make_salt(struct module_options *options)
 #endif
     }
 
-    r = read(urandom, insert_point, needed);
-    if (r == -1) {
-        DBGLOG("error reading from /dev/urandom; errno %d (%s)\n", errno, strerror(errno));
-        ret = NULL;
-        goto cleanup;
-    } else if (r != needed) {
-        DBGLOG("short read from /dev/urandom\n");
-        ret = NULL;
-        goto cleanup;
+    read_point = insert_point;
+    n_read = 0;
+    while (n_read < needed) {
+        r = read(urandom, read_point, needed - n_read);
+        if (r == -1) {
+            DBGLOG("error reading from /dev/urandom; errno %d (%s)\n", errno, strerror(errno));
+            ret = NULL;
+            goto cleanup;
+        } else if (r == 0) {
+            DBGLOG("EOF from /dev/urandom\n");
+            ret = NULL;
+            goto cleanup;
+        }
+        read_point += r;
     }
     for (i = 0; i < needed; ++i) {
         insert_point[i] = salt_chars[insert_point[i] % 64];
