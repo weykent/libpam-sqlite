@@ -399,6 +399,7 @@ static unsigned char * crypt_make_salt(struct module_options *options)
             ret = NULL;
             goto cleanup;
         }
+        n_read += r;
         read_point += r;
     }
     for (i = 0; i < needed; ++i) {
