@@ -483,8 +483,10 @@ static int auth_verify_password(const char *un,
 
     /* get the encrypted password from the database */
     const char *stored_pwd = (char *)sqlite3_column_text(stmt, 0);
-
     result = PAM_AUTH_ERR;
+    if (!stored_pwd)
+        goto cleanup;
+
     switch(options->pw_type) {
         case PW_SHA512:
 #if HAVE_MD5_CRYPT
